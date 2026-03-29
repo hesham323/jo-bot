@@ -1,75 +1,67 @@
 import telebot
 from telebot import types
-import json
-import os
 
-# --- الإعدادات النهائية (هشام) ---
-TOKEN = "8702007988:AAFTv9w2-2bsf-Wwv-6m7Q0VyXyDdaXjHHE" 
-ADMIN_ID = 1433522207 
-ORANGE_MONEY_INFO = "👤 الاسم: HESHAM3909\n📞 الرقم: 0779111936"
-
+# --- استخدم التوكن الجديد والمفعل حصراً ---
+TOKEN = '8702007988:AAFTv9w2-2bsf-Wwv-6m7Q0VyXyDdaXjHHE'
 bot = telebot.TeleBot(TOKEN)
-DATA_FILE = "tawseela_pro.json"
 
-def load_data():
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except: return {"rides": [], "drivers": {}}
-    return {"rides": [], "drivers": {}}
+# قاعدة بيانات مؤقتة للرحلات
+trips = {}
 
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
-# --- الواجهة الرئيسية ---
 @bot.message_handler(commands=['start'])
-def start(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn1 = types.KeyboardButton("نشر رحلة 🚗")
-    btn2 = types.KeyboardButton("البحث عن رحلة 🔍")
-    btn3 = types.KeyboardButton("ملفي الشخصي 👤")
-    btn4 = types.KeyboardButton("رحلاتي 📋")
-    btn5 = types.KeyboardButton("المساعدة ℹ️")
-    btn6 = types.KeyboardButton("تقييم رحلة ⭐")
-    markup.add(btn1, btn2, btn3, btn4, btn5, btn6)
-    markup.row(types.KeyboardButton("💳 اشترك الآن - 5 د.أ/شهر"))
-    if message.from_user.id == ADMIN_ID:
-        markup.row(types.KeyboardButton("📊 لوحة تحكم المدير (هشام)"))
-    
-    bot.send_message(message.chat.id, f"أهلاً بك {message.from_user.first_name} في بوت توصيلة الأردن 🇯🇴\nبإدارة: هشام\n\nاختر من القائمة أدناه:", reply_markup=markup)
+def welcome(message):
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    btn1 = types.KeyboardButton('🚗 أنا سائق (إضافة رحلة)')
+    btn2 = types.KeyboardButton('👤 أنا راكب (بحث عن رحلة)')
+    markup.add(btn1, btn2)
+    bot.send_message(message.chat.id, "أهلاً بك في بوت 'توصيلة الأردن' 🇯🇴\nبإدارة: هشام\nطريقك أسهل وأوفر!", reply_markup=markup)
 
-# --- منطق الأزرار ---
-@bot.message_handler(func=lambda message: True)
-def handle_all(message):
-    if message.text == "البحث عن رحلة 🔍":
-        data = load_data()
-        if not data["rides"]:
-            bot.send_message(message.chat.id, "❌ لا توجد رحلات متوفرة حالياً.")
+@bot.message_handler(func=lambda message: message.text == '🚗 أنا سائق (إضافة رحلة)')
+def add_trip(message):
+    msg = bot.send_message(message.chat.id, "أدخل مسار الرحلة (مثال: عمان إلى إربد):")
+    bot.register_next_step_handler(msg, process_route)
+
+def process_route(message):
+    route = message.text
+    msg = bot.send_message(message.chat.id, "كم عدد المقاعد المتاحة في سيارتك؟")
+    bot.register_next_step_handler(msg, lambda m: process_seats(m, route))
+
+def process_seats(message, route):
+    try:
+        seats = int(message.text)
+        trip_id = message.chat.id
+        trips[trip_id] = {'route': route, 'seats': seats, 'driver_name': message.from_user.first_name}
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_book = types.InlineKeyboardButton(f"حجز مقعد (المتبقي: {seats}) 💺", callback_data=f"book_{trip_id}")
+        markup.add(btn_book)
+        
+        bot.send_message(message.chat.id, f"✅ تم نشر رحلتك بنجاح:\n📍 المسار: {route}\n💺 المقاعد المتوفرة: {seats}", reply_markup=markup)
+    except:
+        msg = bot.send_message(message.chat.id, "الرجاء إدخال رقم صحيح للمقاعد (مثلاً: 3):")
+        bot.register_next_step_handler(msg, lambda m: process_seats(m, route))
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('book_'))
+def handle_booking(call):
+    trip_id = int(call.data.split('_')[1])
+    if trip_id in trips and trips[trip_id]['seats'] > 0:
+        trips[trip_id]['seats'] -= 1
+        new_seats = trips[trip_id]['seats']
+        
+        markup = types.InlineKeyboardMarkup()
+        if new_seats > 0:
+            btn_book = types.InlineKeyboardButton(f"حجز مقعد (المتبقي: {new_seats}) 💺", callback_data=f"book_{trip_id}")
+            markup.add(btn_book)
         else:
-            res = "🔍 آخر الرحلات المنشورة:\n" + "-"*15 + "\n"
-            for r in data["rides"][-5:]:
-                res += f"👤 السائق: {r['driver']}\n📍 التفاصيل: {r['info']}\n" + "-"*10 + "\n"
-            bot.send_message(message.chat.id, res)
-
-    elif message.text == "نشر رحلة 🚗":
-        msg = bot.send_message(message.chat.id, "اكتب تفاصيل رحلتك (مثلاً: من عمان لإربد، الساعة 4، متوفر 3 مقاعد):")
-        bot.register_next_step_handler(msg, process_ride)
-
-    elif message.text == "💳 اشترك الآن - 5 د.أ/شهر":
-        bot.send_message(message.chat.id, f"للاشتراك المميز والنشر غير المحدود، يرجى التحويل لـ Orange Money:\n\n{ORANGE_MONEY_INFO}\n\nبعد التحويل أرسل صورة الوصل للمدير.")
-
-    elif message.text == "المساعدة ℹ️":
-        bot.send_message(message.chat.id, "هذا البوت لخدمة التوصيل بين المحافظات. للاستفسار تواصل مع @hesham_admin")
-
+            btn_book = types.InlineKeyboardButton("❌ ممتلئة بالكامل", callback_data="full")
+            markup.add(btn_book)
+        
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=markup)
+        bot.answer_callback_query(call.id, "تم حجز مقعدك بنجاح! ✅")
+        bot.send_message(trip_id, f"🔔 تنبيه: قام {call.from_user.first_name} بحجز مقعد معك. المتبقي عندك: {new_seats}")
     else:
-        bot.send_message(message.chat.id, "يرجى استخدام الأزرار بالأسفل.")
+        bot.answer_callback_query(call.id, "نعتذر، هذه الرحلة اكتملت. ❌")
 
-def process_ride(message):
-    data = load_data()
-    data["rides"].append({"driver": message.from_user.first_name, "info": message.text})
-    save_data(data)
-    bot.send_message(message.chat.id, "✅ تم نشر رحلتك بنجاح! سيتمكن الركاب من رؤيتها هسا.")
-
-bot.infinity_polling()
+# --- أمر التشغيل اللانهائي لـ Render ---
+if __name__ == "__main__":
+    bot.infinity_polling()
