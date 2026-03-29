@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta
 
 # التوكن والمعلومات الأساسية
-TOKEN = "8702007988:AAHsIvlx6ZVZWAH2tB5wxIcuHZjRjpubMng"
+TOKEN = "8702007988:AAFTv9w2-2bsf-Wwv-6m7Q0VyXyDdaXjHHE"
 bot = telebot.TeleBot(TOKEN)
 DATA_FILE = "rides_data.json"
 
